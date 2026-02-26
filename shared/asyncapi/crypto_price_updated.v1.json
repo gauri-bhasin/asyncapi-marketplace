@@ -1,0 +1,79 @@
+{
+  "asyncapi": "2.6.0",
+  "info": {
+    "title": "Marketplace Crypto Feed",
+    "version": "1.0.0",
+    "description": "Crypto price updates published by crypto connector."
+  },
+  "channels": {
+    "marketplace.crypto.price_updated.v1": {
+      "description": "Live spot price updates for configured crypto pairs.",
+      "subscribe": {
+        "operationId": "onCryptoPriceUpdated",
+        "message": {
+          "$ref": "#/components/messages/CryptoPriceUpdatedMessage"
+        }
+      }
+    }
+  },
+  "components": {
+    "messages": {
+      "CryptoPriceUpdatedMessage": {
+        "name": "CryptoPriceUpdatedMessage",
+        "title": "Crypto Price Updated",
+        "payload": {
+          "$ref": "#/components/schemas/EventEnvelopeCrypto"
+        },
+        "examples": [
+          {
+            "name": "sample",
+            "payload": {
+              "event_id": "1928be64-e419-4f44-b14b-0f16c2f2d7ef",
+              "ts": "2026-02-23T14:00:00Z",
+              "source": "coinbase",
+              "topic": "marketplace.crypto.price_updated.v1",
+              "tags": {
+                "entity": "BTC-USD"
+              },
+              "payload": {
+                "product_id": "BTC-USD",
+                "price": 96852.11,
+                "currency": "USD"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "schemas": {
+      "EventEnvelopeCrypto": {
+        "type": "object",
+        "required": ["event_id", "ts", "source", "topic", "tags", "payload"],
+        "properties": {
+          "event_id": { "type": "string", "format": "uuid" },
+          "ts": { "type": "string", "format": "date-time" },
+          "source": { "type": "string" },
+          "topic": { "type": "string", "const": "marketplace.crypto.price_updated.v1" },
+          "tags": {
+            "type": "object",
+            "properties": {
+              "entity": { "type": "string" }
+            },
+            "additionalProperties": true
+          },
+          "payload": {
+            "type": "object",
+            "required": ["product_id", "price", "currency"],
+            "properties": {
+              "product_id": { "type": "string" },
+              "price": { "type": "number" },
+              "currency": { "type": "string" }
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}

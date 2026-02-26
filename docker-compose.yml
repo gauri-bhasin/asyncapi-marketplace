@@ -1,0 +1,148 @@
+name: asyncapi-marketplace
+
+services:
+  solace:
+    image: solace/solace-pubsub-standard:latest
+    container_name: solace-broker
+    shm_size: 2g
+    environment:
+      username_admin_globalaccesslevel: admin
+      username_admin_password: admin
+    ports:
+      - "8080:8080"
+      - "55555:55555"
+      - "1883:1883"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: asyncapi-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-marketplace}
+      POSTGRES_USER: ${POSTGRES_USER:-marketplace}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-marketplace}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-marketplace} -d ${POSTGRES_DB:-marketplace}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  chroma:
+    image: chromadb/chroma:0.6.3
+    container_name: asyncapi-chroma
+    ports:
+      - "8001:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: marketplace-api
+    env_file:
+      - ./.env
+    environment:
+      CHROMA_HOST: chroma
+      CHROMA_PORT: 8000
+      DATABASE_URL: ${DATABASE_URL}
+      SOLACE_HOST: solace
+      SOLACE_PORT: 1883
+    depends_on:
+      postgres:
+        condition: service_healthy
+      chroma:
+        condition: service_started
+      solace:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./shared:/app/shared:ro
+
+  weather-connector:
+    build:
+      context: ./connectors
+      dockerfile: Dockerfile
+    container_name: weather-connector
+    env_file:
+      - ./.env
+    environment:
+      CONNECTOR_KIND: weather
+      DATABASE_URL: ${DATABASE_URL}
+      SOLACE_HOST: solace
+      SOLACE_PORT: 1883
+    depends_on:
+      postgres:
+        condition: service_healthy
+      solace:
+        condition: service_started
+    volumes:
+      - ./shared:/app/shared:ro
+
+  crypto-connector:
+    build:
+      context: ./connectors
+      dockerfile: Dockerfile
+    container_name: crypto-connector
+    env_file:
+      - ./.env
+    environment:
+      CONNECTOR_KIND: crypto
+      DATABASE_URL: ${DATABASE_URL}
+      SOLACE_HOST: solace
+      SOLACE_PORT: 1883
+    depends_on:
+      postgres:
+        condition: service_healthy
+      solace:
+        condition: service_started
+    volumes:
+      - ./shared:/app/shared:ro
+
+  indexer:
+    build:
+      context: ./indexer
+      dockerfile: Dockerfile
+    container_name: marketplace-indexer
+    env_file:
+      - ./.env
+    environment:
+      CHROMA_HOST: chroma
+      CHROMA_PORT: 8000
+      DATABASE_URL: ${DATABASE_URL}
+      SOLACE_HOST: solace
+      SOLACE_PORT: 1883
+    depends_on:
+      postgres:
+        condition: service_healthy
+      chroma:
+        condition: service_started
+      solace:
+        condition: service_started
+    volumes:
+      - ./shared:/app/shared:ro
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: marketplace-web
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    depends_on:
+      - api
+    ports:
+      - "5173:5173"
+
+volumes:
+  postgres_data:
+  chroma_data:
