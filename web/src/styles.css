@@ -15,6 +15,19 @@ header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+header h1 {
+  margin: 0;
+}
+
+.nav-links {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 a {
@@ -30,10 +43,30 @@ a {
 }
 
 input,
-button {
+button,
+select {
   margin-right: 8px;
   margin-bottom: 8px;
   padding: 8px;
+  border-radius: 6px;
+  border: 1px solid #334155;
+  background: #1e293b;
+  color: #f1f5f9;
+}
+
+button {
+  cursor: pointer;
+  background: #2563eb;
+  border-color: #3b82f6;
+}
+
+button:hover {
+  background: #1d4ed8;
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 pre {
@@ -57,4 +90,100 @@ th,
 td {
   border: 1px solid #334155;
   padding: 6px;
+  text-align: left;
+}
+
+th {
+  background: #1e293b;
+}
+
+/* Utilities */
+
+.muted {
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+
+.error-box {
+  background: #450a0a;
+  border: 1px solid #991b1b;
+  color: #fca5a5;
+}
+
+.highlight-box {
+  background: #172554;
+  border: 1px solid #1d4ed8;
+  padding: 10px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  word-break: break-all;
+}
+
+code {
+  background: #1e293b;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 0.85em;
+}
+
+/* Badges */
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.badge-green {
+  background: #065f46;
+  color: #6ee7b7;
+}
+
+.badge-yellow {
+  background: #713f12;
+  color: #fcd34d;
+}
+
+.badge-red {
+  background: #7f1d1d;
+  color: #fca5a5;
+}
+
+/* Small action buttons */
+
+.sm-btn {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  margin: 0 4px;
+}
+
+.sm-btn.danger {
+  background: #991b1b;
+  border-color: #b91c1c;
+}
+
+.sm-btn.danger:hover {
+  background: #7f1d1d;
+}
+
+/* Link-styled button */
+
+.link-btn {
+  background: none;
+  border: none;
+  color: #7dd3fc;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+  font-size: inherit;
+  margin: 0;
+}
+
+.truncate {
+  max-width: 280px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

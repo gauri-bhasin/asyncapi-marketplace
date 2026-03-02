@@ -1,106 +1,145 @@
-# asyncapi-marketplace
+# AsyncAPI Marketplace
 
-Modernized AsyncAPI Marketplace built with Solace PubSub+, FastAPI, React, Postgres, and Chroma.
+A real-time event marketplace powered by **Solace PubSub+**, **FastAPI**, **PostgreSQL**, **ChromaDB**, and a **React + Vite** UI.
+
+---
+
+## V2 Features
+
+| Area | What's new |
+|------|-----------|
+| **User & API Key Management** | `POST /users` creates a developer account with an initial API key. Manage keys via `GET /me/apikeys`, `POST /me/apikeys`, rotate, and revoke endpoints. |
+| **Quotas & Rate Limiting** | Per-key, per-minute usage counters. Exceeding the limit returns **429** with a clear JSON error. Default: 120 req/min (configurable via `RATE_LIMIT_PER_MINUTE`). |
+| **Subscriptions** | First-class subscription objects. `POST /subscriptions`, `GET /me/subscriptions`, `PATCH /subscriptions/{id}` (ACTIVE/PAUSED). WebSocket auto-creates a subscription on connect; paused subscriptions block WS. |
+| **Connector Registry** | Config-driven `connectors` table replaces hard-coded entrypoints. A single **connector-runner** service loads enabled connectors from the DB and runs them in threads. Weather + Crypto seeded by default. |
+| **Ops Console** | `GET /ops/dlq` (paginated), `POST /ops/dlq/{id}/replay` (republish to Solace + mark replayed), `GET /ops/audit` (paginated). UI pages at `/ops/dlq` and `/ops/audit`. |
+| **Registry Sync** | `POST /registry/sync` reloads local AsyncAPI JSON into the topics table. Optional Event Portal push when `EVENT_PORTAL_TOKEN` is set. |
+| **DB Migrations** | Numbered SQL migrations in `api/migrations/` run automatically on startup via a `_migrations` tracking table. |
+
+### Backward Compatibility
+
+All V1 endpoints (`POST /apikeys`, `GET /topics`, `GET /topics/{name}/history`, `/topics/{name}/replay`, `POST /search/semantic`, `POST /agent/recommend`, `WS /ws/subscribe`) continue to work unchanged. Anonymous API keys (issued via `POST /apikeys`) can still access V1 endpoints; V2 user-specific endpoints require a user-linked key.
+
+---
+
+## Quick Start
+
+```bash
+# 1. Clone and configure
+cp .env.example .env
+
+# 2. Build & run everything
+docker compose up --build
+
+# 3. Open the UI
+open http://localhost:5173
+```
+
+### Demo Steps
+
+1. **Create account** — on the homepage enter a username and click **Create Account**.
+2. **Browse catalog** — the two seeded topics (weather, crypto) appear immediately.
+3. **Subscribe** — click a topic, then **Subscribe WebSocket** to see live events.
+4. **Manage keys** — navigate to **API Keys** to create, rotate, or revoke keys.
+5. **Subscriptions** — view and pause/resume subscriptions from the **Subscriptions** page.
+6. **Ops console** — check **DLQ** for dead-lettered events (replay if needed), **Audit** for all recorded actions.
+7. **Registry sync** — `curl -X POST http://localhost:8000/registry/sync -H "X-API-Key: <key>"` to re-sync AsyncAPI specs.
+
+---
 
 ## Architecture
 
-```mermaid
-flowchart LR
-  WC[Weather Connector] -->|marketplace.weather.current_conditions.v1| SOLACE[(Solace PubSub+ Broker)]
-  CC[Crypto Connector] -->|marketplace.crypto.price_updated.v1| SOLACE
-  SOLACE --> IDX[Indexer Service]
-  IDX --> PG[(PostgreSQL)]
-  IDX --> CH[(ChromaDB)]
-  API[FastAPI Marketplace API] --> PG
-  API --> CH
-  WEB[React Vite UI] --> API
-  ASYNCAPI[/shared/asyncapi/*.json/] --> API
+```
+┌────────────┐     MQTT      ┌───────────────┐     MQTT     ┌──────────┐
+│  connector │ ──────────▸   │  Solace       │ ◂────────── │  indexer  │
+│   runner   │               │  PubSub+      │              │          │
+└────────────┘               └───────────────┘              └──────────┘
+       │                                                          │
+       │  Postgres                                    Postgres + Chroma
+       ▼                                                          ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          PostgreSQL + ChromaDB                          │
+└─────────────────────────────────────────────────────────────────────────┘
+       ▲                                                          ▲
+       │  HTTP / WS                                               │
+┌──────────────┐                                          ┌──────────────┐
+│  FastAPI API │ ◂─────── HTTP ───────────────────────▸   │  React UI    │
+│  (port 8000) │                                          │  (port 5173) │
+└──────────────┘                                          └──────────────┘
 ```
 
-## Services
+### Services (docker compose)
 
-- `infra/docker-compose.yml`
-- `connectors/weather_connector.py`
-- `connectors/crypto_connector.py`
-- `indexer/indexer.py`
-- `api/app/main.py`
-- `web/` React app
+| Service | Purpose |
+|---------|---------|
+| `solace` | Solace PubSub+ broker (MQTT on 1883, admin on 8080) |
+| `postgres` | PostgreSQL 16 |
+| `chroma` | ChromaDB vector store |
+| `api` | FastAPI backend — REST + WebSocket |
+| `connector-runner` | Config-driven connector runner (weather + crypto) |
+| `indexer` | MQTT subscriber → Postgres + Chroma |
+| `web` | React + Vite frontend |
 
-## Run Locally
+---
 
-1. Copy env file:
-   - `cp .env.example .env` (macOS/Linux)
-   - `Copy-Item .env.example .env -Force` (PowerShell)
-2. Start all services:
-   - `docker compose up --build`
-3. Open:
-   - UI: `http://localhost:5173`
-   - API: `http://localhost:8000`
-   - Solace UI: `http://localhost:8080` (admin/admin)
+## API Reference (V2 additions)
 
-### Frontend Fallback (if web container build is slow)
+### Users
 
-If `web` image build hangs during `npm install` on Windows, run frontend locally:
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/users` | No | Create user + initial API key |
+| GET | `/me` | User | Current user profile |
 
-1. Keep backend services running via Docker (`api`, `postgres`, `chroma`, `solace`, connectors, indexer).
-2. Run:
-   - `cd web`
-   - `npm install`
-   - `npm run dev`
-3. Open `http://localhost:5173`.
+### API Keys
 
-## Demo Steps
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/apikeys` | No | V1 compat — anonymous key |
+| GET | `/me/apikeys` | User | List your keys |
+| POST | `/me/apikeys` | User | Create a new key |
+| POST | `/me/apikeys/{id}/rotate` | User | Rotate key (new secret, same ID) |
+| DELETE | `/me/apikeys/{id}` | User | Revoke key |
 
-1. Open UI and click **Issue API Key**.
-2. Browse topic catalog on `/`.
-3. Open topic detail page.
-4. Click **Subscribe WebSocket** to see live feed.
-5. Use replay controls with ISO timestamps.
-6. Use Agent Assist on home page with a goal (example: `monitor BTC movement`).
+### Subscriptions
 
-## API Highlights
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/subscriptions` | User | Create subscription |
+| GET | `/me/subscriptions` | User | List your subscriptions |
+| PATCH | `/subscriptions/{id}` | User | Set status ACTIVE / PAUSED |
 
-- `POST /apikeys`
-- `GET /topics`
-- `GET /topics/{name}`
-- `GET /topics/{name}/history?limit=100`
-- `GET /topics/{name}/replay?since=<iso>&until=<iso>`
-- `WS /ws/subscribe?topic=<name>`
-- `POST /search/semantic`
-- `POST /agent/recommend`
-- `GET /health`
-- `GET /metrics`
+### Ops
 
-## Tests
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/ops/dlq?limit=&offset=&status=` | Key | Paginated DLQ |
+| POST | `/ops/dlq/{id}/replay` | Key | Republish to Solace + mark replayed |
+| GET | `/ops/audit?limit=&offset=` | Key | Paginated audit log |
 
-- Schema validation tests: `api/tests/test_schema_validation.py`
-- Health test: `api/tests/test_health.py`
+### Registry
 
-Run:
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/registry/sync` | Key | Re-sync AsyncAPI JSON → topics table |
 
-- `cd api && pytest -q`
+---
 
-## 5-Minute Demo Script
+## Configuration
 
-1. Start stack: `docker compose up --build`
-2. Open `http://localhost:5173`
-3. Click **Issue API Key**
-4. Open `marketplace.crypto.price_updated.v1`
-5. Click **Subscribe WebSocket** and verify live events arrive every ~20-30 seconds.
-6. Check **History** updates and run **Replay** with:
-   - since: now minus 15 minutes (ISO)
-   - until: now (ISO)
-7. Use **Agent Assist** with: `monitor crypto market changes`
-8. Verify API metrics: `http://localhost:8000/metrics` (look for `events_ingested_total > 0`)
+All configuration via environment variables (see `.env.example`):
 
-## Known Issues / Notes
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RATE_LIMIT_PER_MINUTE` | 120 | Max requests per API key per minute |
+| `EVENT_PORTAL_TOKEN` | *(empty)* | Solace Event Portal token (optional) |
+| `DATABASE_URL` | see .env.example | Postgres connection string |
+| `SOLACE_HOST` / `SOLACE_PORT` | solace / 1883 | Broker address |
 
-- First startup can require service warm-up (Solace and Postgres readiness).
-- WebSocket disconnects on page refresh by design in v1; click subscribe again.
-- Chroma telemetry warnings may appear in logs; non-blocking for local dev.
+---
 
-## Notes
+## DB Migrations
 
-- Topic registry is seeded from `shared/asyncapi/*.json` at API startup.
-- Events are idempotent by `event_id` in indexer inserts.
-- Chroma embeddings use deterministic vectors (no external LLM required for v1).
+SQL files in `api/migrations/` are applied automatically on API startup.  
+A `_migrations` table tracks which files have been applied.  
+To add a migration, create `api/migrations/002_your_change.sql`.

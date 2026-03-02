@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { apiGet, apiPost, getApiKey, issueApiKey } from "../api";
+import { apiGet, apiPost, createUser, getApiKey, getUsername, issueApiKey, setApiKey } from "../api";
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -9,6 +9,8 @@ export default function HomePage() {
   const [goal, setGoal] = useState("");
   const [recommendations, setRecommendations] = useState([]);
   const [apiKey, setApiKeyState] = useState(getApiKey());
+  const [username, setUsernameState] = useState(getUsername());
+  const [newUsername, setNewUsername] = useState("");
   const [error, setError] = useState("");
 
   async function loadTopics() {
@@ -21,7 +23,20 @@ export default function HomePage() {
     }
   }
 
-  async function initApiKey() {
+  async function handleCreateUser() {
+    if (!newUsername.trim()) return;
+    try {
+      const data = await createUser(newUsername.trim());
+      setApiKeyState(data.api_key);
+      setUsernameState(data.user.username);
+      setError("");
+      await loadTopics();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  async function handleLegacyKey() {
     const key = await issueApiKey();
     setApiKeyState(key);
     await loadTopics();
@@ -57,12 +72,32 @@ export default function HomePage() {
       {!apiKey && (
         <section className="card">
           <h3>Get Started</h3>
-          <button onClick={initApiKey}>Issue API Key</button>
+          <p>Create a developer account to access the marketplace.</p>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <input
+              placeholder="Choose a username"
+              value={newUsername}
+              onChange={(e) => setNewUsername(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleCreateUser()}
+            />
+            <button onClick={handleCreateUser}>Create Account</button>
+          </div>
+          <p className="muted" style={{ marginTop: 8 }}>
+            Or{" "}
+            <button className="link-btn" onClick={handleLegacyKey}>
+              issue an anonymous API key
+            </button>
+          </p>
         </section>
       )}
 
       {apiKey && (
         <>
+          {username && (
+            <p className="muted" style={{ marginBottom: 8 }}>
+              Signed in as <strong>{username}</strong>
+            </p>
+          )}
           <section className="card">
             <h3>Topic Catalog</h3>
             <input
@@ -98,7 +133,7 @@ export default function HomePage() {
           </section>
         </>
       )}
-      {error && <pre>{error}</pre>}
+      {error && <pre className="error-box">{error}</pre>}
     </main>
   );
 }

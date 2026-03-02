@@ -38,10 +38,16 @@ export default function TopicPage() {
     const ws = new WebSocket(wsUrl(decoded));
     wsRef.current = ws;
     ws.onopen = () => setWsState("connected");
-    ws.onclose = () => setWsState("disconnected");
+    ws.onclose = (event) => {
+      setWsState(event.reason ? `disconnected: ${event.reason}` : "disconnected");
+    };
     ws.onerror = () => setWsState("error");
     ws.onmessage = (event) => {
       const row = JSON.parse(event.data);
+      if (row.error) {
+        setWsState(`rejected: ${row.error}`);
+        return;
+      }
       setFeed((prev) => [...prev.slice(-199), row]);
     };
   }

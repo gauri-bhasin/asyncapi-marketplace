@@ -68,15 +68,15 @@ services:
     volumes:
       - ./shared:/app/shared:ro
 
-  weather-connector:
+  connector-runner:
     build:
       context: ./connectors
       dockerfile: Dockerfile
-    container_name: weather-connector
+    container_name: connector-runner
     env_file:
       - ./.env
     environment:
-      CONNECTOR_KIND: weather
+      CONNECTOR_KIND: runner
       DATABASE_URL: ${DATABASE_URL}
       SOLACE_HOST: solace
       SOLACE_PORT: 1883
@@ -85,25 +85,7 @@ services:
         condition: service_healthy
       solace:
         condition: service_started
-    volumes:
-      - ./shared:/app/shared:ro
-
-  crypto-connector:
-    build:
-      context: ./connectors
-      dockerfile: Dockerfile
-    container_name: crypto-connector
-    env_file:
-      - ./.env
-    environment:
-      CONNECTOR_KIND: crypto
-      DATABASE_URL: ${DATABASE_URL}
-      SOLACE_HOST: solace
-      SOLACE_PORT: 1883
-    depends_on:
-      postgres:
-        condition: service_healthy
-      solace:
+      api:
         condition: service_started
     volumes:
       - ./shared:/app/shared:ro

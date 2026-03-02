@@ -51,7 +51,7 @@ def validate_event(topic: str, event: dict[str, Any]) -> None:
 
 
 class SolacePublisher:
-    def __init__(self) -> None:
+    def __init__(self, max_retries: int = 30, retry_delay: int = 5) -> None:
         self.host = os.getenv("SOLACE_HOST", "localhost")
         self.port = int(os.getenv("SOLACE_PORT", "1883"))
         self.username = os.getenv("SOLACE_USERNAME", "admin")
@@ -59,8 +59,17 @@ class SolacePublisher:
         self.client_id = f"connector-{uuid.uuid4()}"
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, self.client_id)
         self.client.username_pw_set(self.username, self.password)
-        self.client.connect(self.host, self.port, keepalive=60)
-        self.client.loop_start()
+        for attempt in range(1, max_retries + 1):
+            try:
+                self.client.connect(self.host, self.port, keepalive=60)
+                self.client.loop_start()
+                log_json("info", "Connected to Solace MQTT", host=self.host, port=self.port)
+                return
+            except (ConnectionRefusedError, OSError) as exc:
+                log_json("warning", f"Solace not ready (attempt {attempt}/{max_retries})",
+                         error=str(exc), host=self.host, port=self.port)
+                time.sleep(retry_delay)
+        raise ConnectionError(f"Could not connect to Solace at {self.host}:{self.port} after {max_retries} attempts")
 
     def publish(self, topic: str, event: dict[str, Any]) -> None:
         payload = json.dumps(event)

@@ -10,14 +10,15 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from app.core.auth import require_api_key
 from app.core.config import settings
-from app.core.db import get_conn, init_db, seed_topics_from_asyncapi
+from app.core.db import get_conn, init_db, run_migrations, seed_topics_from_asyncapi
 from app.core.metrics import connector_errors_total, dlq_events_total, events_ingested_total
-from app.routers import agent, auth, search, topics, ws
+from app.routers import agent, auth, ops, registry, search, subscriptions, topics, users, ws
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
+    run_migrations()
     seed_topics_from_asyncapi(settings.asyncapi_dir)
     yield
 
@@ -32,11 +33,19 @@ app.add_middleware(
 )
 trace.set_tracer_provider(TracerProvider())
 FastAPIInstrumentor.instrument_app(app)
+
+# V1 routers
 app.include_router(auth.router)
 app.include_router(topics.router)
 app.include_router(search.router)
 app.include_router(agent.router)
 app.include_router(ws.router)
+
+# V2 routers
+app.include_router(users.router)
+app.include_router(subscriptions.router)
+app.include_router(ops.router)
+app.include_router(registry.router)
 
 
 @app.get("/health")

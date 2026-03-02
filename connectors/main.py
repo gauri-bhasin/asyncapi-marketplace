@@ -9,7 +9,11 @@ def main() -> None:
     setup_logging()
     ensure_dlq_table()
     connector_kind = os.getenv("CONNECTOR_KIND", "weather").lower()
-    if connector_kind == "weather":
+
+    if connector_kind == "runner":
+        from runner import main as run_all
+        run_all()
+    elif connector_kind == "weather":
         run_weather()
     elif connector_kind == "crypto":
         run_crypto()

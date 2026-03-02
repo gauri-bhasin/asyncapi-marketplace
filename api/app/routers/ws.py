@@ -4,29 +4,58 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from app.core.db import get_conn, validate_api_key
+from app.core.db import (
+    check_rate_limit,
+    get_conn,
+    increment_usage,
+    resolve_api_key,
+    write_audit,
+)
 from app.core.metrics import ws_active_subscriptions
 
-
 router = APIRouter(tags=["ws"])
-
-
-def write_audit(action: str, details: dict) -> None:
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO audit_logs (action, details) VALUES (%s, %s::jsonb)",
-                (action, json.dumps(details)),
-            )
-        conn.commit()
 
 
 @router.websocket("/ws/subscribe")
 async def ws_subscribe(websocket: WebSocket, topic: str) -> None:
     api_key = websocket.headers.get("X-API-Key") or websocket.query_params.get("api_key")
-    if not validate_api_key(api_key or ""):
+    auth = resolve_api_key(api_key or "")
+    if not auth:
+        await websocket.accept()
+        await websocket.send_json({"error": "Invalid API key"})
         await websocket.close(code=1008, reason="Invalid API key")
         return
+
+    if check_rate_limit(auth["api_key_id"]):
+        await websocket.accept()
+        await websocket.send_json({"error": "Rate limit exceeded"})
+        await websocket.close(code=1008, reason="Rate limit exceeded")
+        return
+
+    increment_usage(auth["api_key_id"], topic)
+
+    # Subscription gating: auto-create ACTIVE subscription on connect,
+    # reject if an existing subscription for this topic is PAUSED.
+    if auth["user_id"] is not None:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id, status FROM subscriptions WHERE user_id=%s AND topic=%s ORDER BY id DESC LIMIT 1",
+                    (auth["user_id"], topic),
+                )
+                sub = cur.fetchone()
+                if sub:
+                    if sub["status"] != "ACTIVE":
+                        await websocket.accept()
+                        await websocket.send_json({"error": "Subscription is paused"})
+                        await websocket.close(code=1008, reason="Subscription is paused")
+                        return
+                else:
+                    cur.execute(
+                        "INSERT INTO subscriptions (user_id, topic) VALUES (%s, %s)",
+                        (auth["user_id"], topic),
+                    )
+            conn.commit()
 
     await websocket.accept()
     ws_active_subscriptions.inc()

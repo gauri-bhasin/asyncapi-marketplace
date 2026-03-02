@@ -3,6 +3,7 @@ fastapi==0.115.8
 opentelemetry-api==1.30.0
 opentelemetry-sdk==1.30.0
 opentelemetry-instrumentation-fastapi==0.51b0
+paho-mqtt==2.1.0
 prometheus-client==0.21.1
 psycopg[binary]==3.2.6
 pydantic==2.10.6

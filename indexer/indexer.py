@@ -137,7 +137,20 @@ def main() -> None:
 
     mqtt_client.on_connect = on_connect
     mqtt_client.on_message = _on_message
-    mqtt_client.connect(os.getenv("SOLACE_HOST", "localhost"), int(os.getenv("SOLACE_PORT", "1883")), 60)
+
+    solace_host = os.getenv("SOLACE_HOST", "localhost")
+    solace_port = int(os.getenv("SOLACE_PORT", "1883"))
+    for attempt in range(1, 31):
+        try:
+            mqtt_client.connect(solace_host, solace_port, 60)
+            print(json.dumps({"level": "info", "message": "Connected to Solace MQTT"}))
+            break
+        except (ConnectionRefusedError, OSError) as exc:
+            print(json.dumps({"level": "warning", "message": f"Solace not ready (attempt {attempt}/30)", "error": str(exc)}))
+            time.sleep(5)
+    else:
+        raise ConnectionError(f"Could not connect to Solace at {solace_host}:{solace_port} after 30 attempts")
+
     mqtt_client.loop_start()
 
     while True:
