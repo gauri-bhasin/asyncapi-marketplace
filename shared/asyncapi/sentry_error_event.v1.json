@@ -1,0 +1,79 @@
+{
+  "asyncapi": "2.6.0",
+  "info": {
+    "title": "SignalHub Sentry Error Event",
+    "version": "1.0.0",
+    "description": "Normalized Sentry issue/error events for cross-system correlation."
+  },
+  "channels": {
+    "marketplace.ops.sentry.error_event.v1": {
+      "description": "Error events ingested from Sentry webhooks.",
+      "subscribe": {
+        "message": {
+          "$ref": "#/components/messages/SentryErrorEventMessage"
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "EventEnvelope": {
+        "type": "object",
+        "required": ["event_id", "ts", "source", "topic", "tags", "payload"],
+        "properties": {
+          "event_id": { "type": "string", "format": "uuid" },
+          "ts": { "type": "string", "format": "date-time" },
+          "source": { "type": "string", "enum": ["github", "sentry", "detector"] },
+          "topic": { "type": "string", "const": "marketplace.ops.sentry.error_event.v1" },
+          "tags": {
+            "type": "object",
+            "properties": {
+              "repo": { "type": "string" },
+              "env": { "type": "string" },
+              "service": { "type": "string" },
+              "release": { "type": "string" },
+              "deploy_id": { "type": "string" },
+              "commit": { "type": "string" },
+              "fingerprint": { "type": "string" }
+            },
+            "additionalProperties": true
+          },
+          "payload": { "type": "object", "additionalProperties": true }
+        },
+        "additionalProperties": false
+      }
+    },
+    "messages": {
+      "SentryErrorEventMessage": {
+        "name": "SentryErrorEventMessage",
+        "title": "Sentry Error Event",
+        "payload": {
+          "$ref": "#/components/schemas/EventEnvelope"
+        },
+        "examples": [
+          {
+            "name": "issue_regressed",
+            "payload": {
+              "event_id": "0d9cb7ba-4916-4f1f-bb2f-b9f16567e257",
+              "ts": "2026-03-03T10:35:00Z",
+              "source": "sentry",
+              "topic": "marketplace.ops.sentry.error_event.v1",
+              "tags": {
+                "env": "production",
+                "service": "payments-api",
+                "release": "2026.03.03.1",
+                "fingerprint": "TypeError:undefined-checkout"
+              },
+              "payload": {
+                "project": "payments",
+                "level": "error",
+                "message": "TypeError in checkout flow",
+                "count": 5
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

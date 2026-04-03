@@ -1,0 +1,83 @@
+{
+  "asyncapi": "2.6.0",
+  "info": {
+    "title": "SignalHub Incident Story Event",
+    "version": "1.0.0",
+    "description": "Detector-generated incident stories for timeline and replay."
+  },
+  "channels": {
+    "marketplace.ops.incident.story.v1": {
+      "description": "Incident story events from the detector service.",
+      "subscribe": {
+        "message": {
+          "$ref": "#/components/messages/IncidentStoryMessage"
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "EventEnvelope": {
+        "type": "object",
+        "required": ["event_id", "ts", "source", "topic", "tags", "payload"],
+        "properties": {
+          "event_id": { "type": "string", "format": "uuid" },
+          "ts": { "type": "string", "format": "date-time" },
+          "source": { "type": "string", "enum": ["github", "sentry", "detector"] },
+          "topic": { "type": "string", "const": "marketplace.ops.incident.story.v1" },
+          "tags": {
+            "type": "object",
+            "properties": {
+              "repo": { "type": "string" },
+              "env": { "type": "string" },
+              "service": { "type": "string" },
+              "release": { "type": "string" },
+              "deploy_id": { "type": "string" },
+              "commit": { "type": "string" },
+              "fingerprint": { "type": "string" }
+            },
+            "additionalProperties": true
+          },
+          "payload": { "type": "object", "additionalProperties": true }
+        },
+        "additionalProperties": false
+      }
+    },
+    "messages": {
+      "IncidentStoryMessage": {
+        "name": "IncidentStoryMessage",
+        "title": "Incident Story Event",
+        "payload": {
+          "$ref": "#/components/schemas/EventEnvelope"
+        },
+        "examples": [
+          {
+            "name": "story_generated",
+            "payload": {
+              "event_id": "c85e25e6-197b-4a4b-9e68-d160cb706c9b",
+              "ts": "2026-03-03T10:45:00Z",
+              "source": "detector",
+              "topic": "marketplace.ops.incident.story.v1",
+              "tags": {
+                "repo": "acme/payments",
+                "env": "production",
+                "service": "payments-api",
+                "release": "2026.03.03.1",
+                "deploy_id": "dep_112233",
+                "commit": "a1b2c3d4",
+                "fingerprint": "TypeError:undefined-checkout"
+              },
+              "payload": {
+                "incident_id": "de6ef123-c9ea-4ad2-a7da-f7d097450d4e",
+                "severity": "high",
+                "count": 7,
+                "delta_minutes": 10,
+                "story_text": "Deploy a1b2c3d4 at 2026-03-03T10:30:00Z -> error TypeError:undefined-checkout rose to 7 within 10m. Suspected cause: acme/payments@a1b2c3d4. Confidence: 0.88."
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

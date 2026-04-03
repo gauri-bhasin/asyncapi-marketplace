@@ -1,44 +1,26 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 export function getApiKey() {
-  return localStorage.getItem("marketplace_api_key") || "";
+  return localStorage.getItem("signalhub_api_key") || "";
 }
 
 export function setApiKey(key) {
-  localStorage.setItem("marketplace_api_key", key);
+  localStorage.setItem("signalhub_api_key", key);
 }
 
-export function getUsername() {
-  return localStorage.getItem("marketplace_username") || "";
+export function getSelectedTopic() {
+  return localStorage.getItem("signalhub_selected_topic") || "";
 }
 
-export function setUsername(name) {
-  localStorage.setItem("marketplace_username", name);
+export function setSelectedTopic(name) {
+  localStorage.setItem("signalhub_selected_topic", name);
 }
 
-// V1 compat
 export async function issueApiKey() {
   const resp = await fetch(`${API_BASE}/apikeys`, { method: "POST" });
   const data = await resp.json();
   setApiKey(data.api_key);
   return data.api_key;
-}
-
-// V2: create user + initial key
-export async function createUser(username, displayName = "") {
-  const resp = await fetch(`${API_BASE}/users`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, display_name: displayName }),
-  });
-  if (!resp.ok) {
-    const err = await resp.json().catch(() => ({ detail: resp.statusText }));
-    throw new Error(err.detail || resp.statusText);
-  }
-  const data = await resp.json();
-  setApiKey(data.api_key);
-  setUsername(data.user.username);
-  return data;
 }
 
 export async function apiGet(path) {

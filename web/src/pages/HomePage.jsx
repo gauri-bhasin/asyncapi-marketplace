@@ -1,58 +1,77 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { apiGet, apiPost, createUser, getApiKey, getUsername, issueApiKey, setApiKey } from "../api";
+import { apiGet, apiPost, getApiKey, issueApiKey, setSelectedTopic } from "../api";
 
 export default function HomePage() {
   const navigate = useNavigate();
   const [topics, setTopics] = useState([]);
+  const [incidents, setIncidents] = useState([]);
   const [keyword, setKeyword] = useState("");
+  const [semanticQuery, setSemanticQuery] = useState("");
+  const [semanticResults, setSemanticResults] = useState([]);
   const [goal, setGoal] = useState("");
   const [recommendations, setRecommendations] = useState([]);
   const [apiKey, setApiKeyState] = useState(getApiKey());
-  const [username, setUsernameState] = useState(getUsername());
-  const [newUsername, setNewUsername] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [semanticLoading, setSemanticLoading] = useState(false);
+  const [assistLoading, setAssistLoading] = useState(false);
   const [error, setError] = useState("");
 
-  async function loadTopics() {
+  async function loadData() {
+    if (!apiKey) return;
+    setLoading(true);
     try {
-      const rows = await apiGet("/topics");
+      const [rows, inc] = await Promise.all([apiGet("/topics"), apiGet("/incidents")]);
       setTopics(rows);
+      setIncidents(inc || []);
       setError("");
     } catch (e) {
       setError(String(e));
+    } finally {
+      setLoading(false);
     }
   }
 
-  async function handleCreateUser() {
-    if (!newUsername.trim()) return;
-    try {
-      const data = await createUser(newUsername.trim());
-      setApiKeyState(data.api_key);
-      setUsernameState(data.user.username);
-      setError("");
-      await loadTopics();
-    } catch (e) {
-      setError(String(e));
-    }
-  }
-
-  async function handleLegacyKey() {
+  async function handleKey() {
     const key = await issueApiKey();
     setApiKeyState(key);
-    await loadTopics();
+    await loadData();
+  }
+
+  async function runSemanticSearch() {
+    if (!semanticQuery.trim()) return;
+    setSemanticLoading(true);
+    try {
+      const resp = await apiPost("/search/semantic", { query: semanticQuery });
+      setSemanticResults(resp.results || []);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSemanticLoading(false);
+    }
   }
 
   async function runAssist() {
-    const resp = await apiPost("/agent/recommend", { goal });
-    setRecommendations(resp.recommended_topics || []);
+    if (!goal.trim()) return;
+    setAssistLoading(true);
+    try {
+      const resp = await apiPost("/agent/recommend", { goal });
+      setRecommendations(resp.recommended_topics || []);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setAssistLoading(false);
+    }
   }
 
-  function openAndSubscribe(topic) {
-    navigate(`/topic/${encodeURIComponent(topic)}?auto_subscribe=1`);
+  function openTopic(topic) {
+    setSelectedTopic(topic);
+    navigate(`/topics/${encodeURIComponent(topic)}`);
   }
 
   useEffect(() => {
-    if (apiKey) loadTopics();
+    loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiKey]);
 
   const filtered = useMemo(() => {
@@ -67,72 +86,182 @@ export default function HomePage() {
     });
   }, [topics, keyword]);
 
+  const activeIncidents = (incidents || []).slice(0, 3);
+
   return (
     <main>
       {!apiKey && (
         <section className="card">
-          <h3>Get Started</h3>
-          <p>Create a developer account to access the marketplace.</p>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <input
-              placeholder="Choose a username"
-              value={newUsername}
-              onChange={(e) => setNewUsername(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleCreateUser()}
-            />
-            <button onClick={handleCreateUser}>Create Account</button>
+          <div className="section-header">
+            <h3>Welcome to SignalHub</h3>
+            <span className="badge badge-neutral">Demo mode</span>
           </div>
-          <p className="muted" style={{ marginTop: 8 }}>
-            Or{" "}
-            <button className="link-btn" onClick={handleLegacyKey}>
-              issue an anonymous API key
-            </button>
+          <p>
+            Issue a short-lived API key to explore deploys, errors, incidents, and AI recommendations in a
+            unified operational timeline.
           </p>
+          <button onClick={handleKey}>Create API Key</button>
         </section>
       )}
 
       {apiKey && (
         <>
-          {username && (
-            <p className="muted" style={{ marginBottom: 8 }}>
-              Signed in as <strong>{username}</strong>
-            </p>
-          )}
           <section className="card">
-            <h3>Topic Catalog</h3>
-            <input
-              placeholder="Keyword search"
-              value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
-            />
-            <ul>
-              {filtered.map((topic) => (
-                <li key={topic.name}>
-                  <Link to={`/topic/${encodeURIComponent(topic.name)}`}>{topic.name}</Link> -{" "}
-                  {topic.description}
-                </li>
-              ))}
-            </ul>
+            <div className="section-header">
+              <h3>Operational overview</h3>
+              <span className="muted">
+                {activeIncidents.length > 0 ? `${activeIncidents.length} recent incidents` : "No recent incidents"}
+              </span>
+            </div>
+            <div className="pill-row">
+              <div className="pill">
+                <span className="pill-label">Catalog topics</span>{" "}
+                <strong>{topics.length || 0}</strong>
+              </div>
+              <div className="pill">
+                <span className="pill-label">API key</span>{" "}
+                <span className="truncate">{apiKey}</span>
+              </div>
+              {activeIncidents[0] && (
+                <div className="pill">
+                  <span className="pill-label">Newest incident</span>{" "}
+                  <span className="truncate">{activeIncidents[0].title}</span>
+                </div>
+              )}
+            </div>
           </section>
-          <section className="card">
-            <h3>Agent Assist</h3>
-            <input
-              placeholder="e.g. Track BTC price spikes"
-              value={goal}
-              onChange={(e) => setGoal(e.target.value)}
-            />
-            <button onClick={runAssist}>Recommend Topics</button>
-            <ul>
-              {recommendations.map((r) => (
-                <li key={r.topic}>
-                  <Link to={`/topic/${encodeURIComponent(r.topic)}`}>{r.topic}</Link> ({r.score?.toFixed(3)})
-                  <button onClick={() => openAndSubscribe(r.topic)}>One-click subscribe</button>
-                </li>
-              ))}
-            </ul>
-          </section>
+
+          <div className="layout-two-column">
+            <section className="card">
+              <div className="section-header">
+                <h3>Topic catalog</h3>
+                {loading && <span className="badge badge-outline">Loading…</span>}
+              </div>
+              <p className="muted">
+                Browse normalized operational topics backed by AsyncAPI schemas. Use search to jump to a
+                deploy, error, or incident story stream.
+              </p>
+              <input
+                placeholder="Filter by name, tag, or description"
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+              />
+              {filtered.length === 0 && !loading && (
+                <div className="timeline-empty">
+                  No topics match <code>{keyword}</code>. Try clearing the filter.
+                </div>
+              )}
+              <ul>
+                {filtered.map((topic) => (
+                  <li key={topic.name}>
+                    <Link to={`/topics/${encodeURIComponent(topic.name)}`}>{topic.name}</Link>{" "}
+                    <span className="muted">· {topic.description}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+
+            <section className="card">
+              <div className="section-header">
+                <h3>Active incidents</h3>
+                <button
+                  type="button"
+                  className="secondary sm-btn"
+                  onClick={() => navigate("/timeline")}
+                >
+                  Open live timeline
+                </button>
+              </div>
+              {activeIncidents.length === 0 && (
+                <div className="timeline-empty">
+                  No incidents yet. Once deploys and errors are ingested, new incidents will appear here.
+                </div>
+              )}
+              <ul>
+                {activeIncidents.map((inc) => (
+                  <li key={inc.id}>
+                    <Link to={`/incidents/${inc.id}`}>{inc.title}</Link>{" "}
+                    <span className="badge badge-outline">{inc.severity}</span>{" "}
+                    <span className="muted">{inc.status}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </div>
+
+          <div className="layout-two-column">
+            <section className="card">
+              <div className="section-header">
+                <h3>Semantic search</h3>
+                {semanticLoading && <span className="badge badge-outline">Searching…</span>}
+              </div>
+              <p className="muted">
+                Ask natural-language questions about your operational history. SignalHub searches a
+                Chroma-backed index of past events.
+              </p>
+              <input
+                placeholder="e.g. deploy related errors in staging"
+                value={semanticQuery}
+                onChange={(e) => setSemanticQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && runSemanticSearch()}
+              />
+              <button onClick={runSemanticSearch} disabled={semanticLoading}>
+                Run search
+              </button>
+              <ul>
+                {semanticResults.length === 0 && !semanticLoading && (
+                  <li className="timeline-empty">No semantic matches yet. Try a broader query.</li>
+                )}
+                {semanticResults.map((r, idx) => (
+                  <li key={`${r.metadata?.topic}-${idx}`}>
+                    <strong>{r.metadata?.topic || "unknown topic"}</strong> ·{" "}
+                    <span className="muted">{r.snippet}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+
+            <section className="card">
+              <div className="section-header">
+                <h3>Agent assist</h3>
+                {assistLoading && <span className="badge badge-outline">Thinking…</span>}
+              </div>
+              <p className="muted">
+                Describe an operational goal and let the agent recommend the most relevant topics to
+                subscribe and replay.
+              </p>
+              <input
+                placeholder="e.g. monitor deploy impact in prod"
+                value={goal}
+                onChange={(e) => setGoal(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && runAssist()}
+              />
+              <button onClick={runAssist} disabled={assistLoading}>
+                Recommend topics
+              </button>
+              <ul>
+                {recommendations.length === 0 && !assistLoading && (
+                  <li className="timeline-empty">
+                    No recommendations yet. Start by describing what you want to understand.
+                  </li>
+                )}
+                {recommendations.map((r) => (
+                  <li key={r.topic}>
+                    <Link to={`/topics/${encodeURIComponent(r.topic)}`}>{r.topic}</Link>{" "}
+                    <span className="muted">
+                      score {typeof r.score === "number" ? r.score.toFixed(3) : r.score}
+                    </span>{" "}
+                    <button className="sm-btn" onClick={() => openTopic(r.topic)}>
+                      Open stream
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </div>
         </>
       )}
+
       {error && <pre className="error-box">{error}</pre>}
     </main>
   );

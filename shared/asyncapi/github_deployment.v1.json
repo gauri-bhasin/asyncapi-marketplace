@@ -1,0 +1,81 @@
+{
+  "asyncapi": "2.6.0",
+  "info": {
+    "title": "SignalHub GitHub Deployment Event",
+    "version": "1.0.0",
+    "description": "Normalized deployment events from GitHub for the operational signal layer."
+  },
+  "channels": {
+    "marketplace.ops.github.deployment.v1": {
+      "description": "Deployment-related events from GitHub webhooks.",
+      "subscribe": {
+        "message": {
+          "$ref": "#/components/messages/GitHubDeploymentMessage"
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "EventEnvelope": {
+        "type": "object",
+        "required": ["event_id", "ts", "source", "topic", "tags", "payload"],
+        "properties": {
+          "event_id": { "type": "string", "format": "uuid" },
+          "ts": { "type": "string", "format": "date-time" },
+          "source": { "type": "string", "enum": ["github", "sentry", "detector"] },
+          "topic": { "type": "string", "const": "marketplace.ops.github.deployment.v1" },
+          "tags": {
+            "type": "object",
+            "properties": {
+              "repo": { "type": "string" },
+              "env": { "type": "string" },
+              "service": { "type": "string" },
+              "release": { "type": "string" },
+              "deploy_id": { "type": "string" },
+              "commit": { "type": "string" },
+              "fingerprint": { "type": "string" }
+            },
+            "additionalProperties": true
+          },
+          "payload": { "type": "object", "additionalProperties": true }
+        },
+        "additionalProperties": false
+      }
+    },
+    "messages": {
+      "GitHubDeploymentMessage": {
+        "name": "GitHubDeploymentMessage",
+        "title": "GitHub Deployment Event",
+        "payload": {
+          "$ref": "#/components/schemas/EventEnvelope"
+        },
+        "examples": [
+          {
+            "name": "deployment_status_success",
+            "payload": {
+              "event_id": "f392090a-1e67-45d8-a266-b1be3b80e4ec",
+              "ts": "2026-03-03T10:30:00Z",
+              "source": "github",
+              "topic": "marketplace.ops.github.deployment.v1",
+              "tags": {
+                "repo": "acme/payments",
+                "env": "production",
+                "service": "payments-api",
+                "release": "2026.03.03.1",
+                "deploy_id": "dep_112233",
+                "commit": "a1b2c3d4"
+              },
+              "payload": {
+                "event_type": "deployment_status",
+                "state": "success",
+                "workflow": "deploy-prod",
+                "description": "Production deployment succeeded"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

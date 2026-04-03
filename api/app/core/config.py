@@ -7,11 +7,11 @@ from pathlib import Path
 class Settings:
     database_url: str = os.getenv(
         "DATABASE_URL",
-        "postgresql+psycopg://marketplace:marketplace@localhost:5432/marketplace",
+        "postgresql+psycopg://signalhub:signalhub@localhost:5432/signalhub",
     )
     chroma_host: str = os.getenv("CHROMA_HOST", "localhost")
     chroma_port: int = int(os.getenv("CHROMA_PORT", "8001"))
-    api_key_prefix: str = os.getenv("API_KEY_PREFIX", "mkp_")
+    api_key_prefix: str = os.getenv("API_KEY_PREFIX", "sh_")
     asyncapi_dir: Path = Path("/app/shared/asyncapi")
 
     # Rate limiting

@@ -4,20 +4,10 @@ import os
 import time
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 import paho.mqtt.client as mqtt
 import psycopg
-from jsonschema import validate
-
-
-ASYNCAPI_DIR = Path("/app/shared/asyncapi")
-
-TOPIC_TO_FILE = {
-    "marketplace.weather.current_conditions.v1": "weather_current_conditions.v1.json",
-    "marketplace.crypto.price_updated.v1": "crypto_price_updated.v1.json",
-}
 
 
 def setup_logging() -> None:
@@ -34,20 +24,6 @@ def log_json(level: str, message: str, **kwargs: Any) -> None:
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-
-def load_schema(topic: str) -> dict[str, Any]:
-    file_name = TOPIC_TO_FILE[topic]
-    spec_path = ASYNCAPI_DIR / file_name
-    with spec_path.open("r", encoding="utf-8") as handle:
-        doc = json.load(handle)
-    schema_name = "EventEnvelopeWeather" if "weather" in topic else "EventEnvelopeCrypto"
-    return doc["components"]["schemas"][schema_name]
-
-
-def validate_event(topic: str, event: dict[str, Any]) -> None:
-    schema = load_schema(topic)
-    validate(instance=event, schema=schema)
 
 
 class SolacePublisher:
@@ -80,7 +56,7 @@ class SolacePublisher:
 
 
 def get_db() -> psycopg.Connection:
-    db_url = os.getenv("DATABASE_URL", "postgresql+psycopg://marketplace:marketplace@localhost:5432/marketplace")
+    db_url = os.getenv("DATABASE_URL", "postgresql+psycopg://signalhub:signalhub@localhost:5432/signalhub")
     # psycopg doesn't accept sqlalchemy-style prefix.
     dsn = db_url.replace("postgresql+psycopg://", "postgresql://")
     return psycopg.connect(dsn)
@@ -126,7 +102,6 @@ def publish_with_retry(publisher: SolacePublisher, topic: str, event: dict[str, 
     last_error: Exception | None = None
     for _ in range(max_attempts):
         try:
-            validate_event(topic, event)
             publisher.publish(topic, event)
             return
         except Exception as exc:  # noqa: BLE001

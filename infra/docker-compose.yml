@@ -1,17 +1,13 @@
-name: asyncapi-marketplace
+name: signalhub
 
 services:
   solace:
     image: solace/solace-pubsub-standard:latest
-    container_name: solace-broker
+    container_name: signalhub-solace
     shm_size: 2g
     environment:
       username_admin_globalaccesslevel: admin
       username_admin_password: admin
-    ports:
-      - "8080:8080"
-      - "55555:55555"
-      - "1883:1883"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080"]
       interval: 20s
@@ -20,26 +16,26 @@ services:
 
   postgres:
     image: postgres:16-alpine
-    container_name: asyncapi-postgres
+    container_name: signalhub-postgres
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-marketplace}
-      POSTGRES_USER: ${POSTGRES_USER:-marketplace}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-marketplace}
+      POSTGRES_DB: ${POSTGRES_DB:-signalhub}
+      POSTGRES_USER: ${POSTGRES_USER:-signalhub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-signalhub}
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-marketplace} -d ${POSTGRES_DB:-marketplace}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-signalhub} -d ${POSTGRES_DB:-signalhub}"]
       interval: 10s
       timeout: 5s
       retries: 10
 
   chroma:
-    image: chromadb/chroma:latest
-    container_name: asyncapi-chroma
+    image: chromadb/chroma:0.6.3
+    container_name: signalhub-chroma
     ports:
-      - "8001:8000"
+      - "8002:8000"
     volumes:
       - chroma_data:/chroma/chroma
 
@@ -47,12 +43,14 @@ services:
     build:
       context: ../api
       dockerfile: Dockerfile
-    container_name: marketplace-api
+    container_name: signalhub-api
     env_file:
       - ../.env
     environment:
+      SERVICE_NAME: api
       CHROMA_HOST: chroma
       CHROMA_PORT: 8000
+      ANONYMIZED_TELEMETRY: "False"
       DATABASE_URL: ${DATABASE_URL}
       SOLACE_HOST: solace
       SOLACE_PORT: 1883
@@ -67,44 +65,35 @@ services:
       - "8000:8000"
     volumes:
       - ../shared:/app/shared:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
 
-  weather-connector:
+  ingest:
     build:
-      context: ../connectors
+      context: ../ingest
       dockerfile: Dockerfile
-    container_name: weather-connector
+    container_name: signalhub-ingest
     env_file:
       - ../.env
     environment:
-      CONNECTOR_KIND: weather
+      SERVICE_NAME: ingest
       DATABASE_URL: ${DATABASE_URL}
+      CHROMA_HOST: chroma
+      CHROMA_PORT: 8000
       SOLACE_HOST: solace
       SOLACE_PORT: 1883
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-signalhub-github-secret}
+      SENTRY_WEBHOOK_TOKEN: ${SENTRY_WEBHOOK_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
       solace:
         condition: service_started
-    volumes:
-      - ../shared:/app/shared:ro
-
-  crypto-connector:
-    build:
-      context: ../connectors
-      dockerfile: Dockerfile
-    container_name: crypto-connector
-    env_file:
-      - ../.env
-    environment:
-      CONNECTOR_KIND: crypto
-      DATABASE_URL: ${DATABASE_URL}
-      SOLACE_HOST: solace
-      SOLACE_PORT: 1883
-    depends_on:
-      postgres:
-        condition: service_healthy
-      solace:
-        condition: service_started
+    ports:
+      - "8001:8001"
     volumes:
       - ../shared:/app/shared:ro
 
@@ -112,12 +101,14 @@ services:
     build:
       context: ../indexer
       dockerfile: Dockerfile
-    container_name: marketplace-indexer
+    container_name: signalhub-indexer
     env_file:
       - ../.env
     environment:
+      SERVICE_NAME: indexer
       CHROMA_HOST: chroma
       CHROMA_PORT: 8000
+      ANONYMIZED_TELEMETRY: "False"
       DATABASE_URL: ${DATABASE_URL}
       SOLACE_HOST: solace
       SOLACE_PORT: 1883
@@ -131,13 +122,38 @@ services:
     volumes:
       - ../shared:/app/shared:ro
 
+  detector:
+    build:
+      context: ../detector
+      dockerfile: Dockerfile
+    container_name: signalhub-detector
+    env_file:
+      - ../.env
+    environment:
+      SERVICE_NAME: detector
+      DATABASE_URL: ${DATABASE_URL}
+      SOLACE_HOST: solace
+      SOLACE_PORT: 1883
+      DETECTOR_WINDOW_MINUTES: ${DETECTOR_WINDOW_MINUTES:-20}
+      DETECTOR_ERROR_THRESHOLD: ${DETECTOR_ERROR_THRESHOLD:-3}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      solace:
+        condition: service_started
+      indexer:
+        condition: service_started
+    volumes:
+      - ../shared:/app/shared:ro
+
   web:
     build:
       context: ../web
       dockerfile: Dockerfile
-    container_name: marketplace-web
+    container_name: signalhub-web
     environment:
       VITE_API_BASE_URL: http://localhost:8000
+      VITE_INGEST_BASE_URL: http://localhost:8001
     depends_on:
       - api
     ports:
